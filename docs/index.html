@@ -127,6 +127,24 @@ summary{cursor:pointer;color:var(--accent);font-weight:500}
 .tool input.wide{width:220px}
 .out{min-height:10px}
 svg text{font-family:var(--body)}
+.qz{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;max-width:980px;margin-bottom:14px}
+.qz h3{margin:0 0 10px;font:700 17px var(--display)}
+.pick{display:flex;flex-wrap:wrap;gap:8px}
+.pick label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;background:var(--bg);font-size:14px}
+.pick label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.pick small{color:var(--muted);font:500 12px var(--mono)}
+.qbar{height:8px;background:var(--line);border-radius:8px;overflow:hidden;margin:6px 0 14px;max-width:980px}
+.qbar i{display:block;height:100%;background:var(--accent)}
+.qtop{display:flex;flex-wrap:wrap;gap:10px;align-items:center;max-width:980px;color:var(--muted);font-size:14px}
+.qtop b{color:var(--ink)}
+.myans{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--bg);font:14px/1.5 var(--body);margin-top:10px}
+.grade{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn.g{border-color:var(--good)} .btn.p{border-color:var(--answer)} .btn.r{border-color:var(--bad)}
+.big{font:800 44px var(--display);color:var(--accent);line-height:1}
+.rev{display:flex;flex-direction:column;gap:6px;max-width:980px}
+.rev div{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px}
+.rev .st{font:600 12px var(--mono);min-width:64px}
+.st.ok{color:var(--good)} .st.half{color:var(--answer)} .st.no{color:var(--bad)}
 @media (max-width:820px){
   .wrap{grid-template-columns:1fr}
   nav{position:static;height:auto;max-height:none;border-right:0;border-bottom:1px solid var(--line)}
@@ -140,10 +158,12 @@ svg text{font-family:var(--body)}
 <header>
   <h1>Crypto<span>Bank</span></h1>
   <input id="search" class="search" type="search" placeholder="Search questions (e.g. Playfair, CRT, Kerberos, EX25)…" aria-label="Search questions">
+  <button class="btn" id="searchGo">Search</button><button class="btn" id="searchClear" hidden>Clear</button>
   <div class="hbtns">
     <button class="btn" id="calcOnly" aria-pressed="false" title="Show only questions with calculations">Calculations only</button>
     <button class="btn" id="hideDone" aria-pressed="false">Hide done</button>
     <button class="btn" id="showAll">Open all solutions</button>
+    <button class="btn on" id="goQuiz">Quiz me</button>
     <button class="btn" id="goTools">Calculators</button>
   </div>
 </header>
@@ -163,6 +183,7 @@ let done = {};
 try{ done = JSON.parse(localStorage.getItem("cryptoBank.done")||"{}"); }catch(e){ done = {}; }
 function saveDone(){ try{ localStorage.setItem("cryptoBank.done", JSON.stringify(done)); }catch(e){} }
 const strip = s => s.replace(/<[^>]+>/g," ");
+const plain = s => {const d=document.createElement("div");d.innerHTML=s.replace(/<sup>/g,"^").replace(/<br>/g," ");return d.textContent.replace(/\s+/g," ").trim();};
 DATA.qs.forEach(q=>{ q.papers=[...new Set(q.src.map(s=>s.split(" ")[0]))]; q.text=(strip(q.q)+" "+q.src.join(" ")+" "+TOP[q.t].name).toLowerCase(); });
 
 /* ---------------- diagrams (small drawing DSL) ---------------- */
@@ -326,13 +347,19 @@ function render(){
   renderNav();
   let h="";
   if(state.view==="tools"){main.innerHTML=toolsHTML();bindTools();return;}
+  if(state.view==="quiz"){renderQuiz();return;}
+  if(state.q.trim()){
+    const all=filtered(DATA.qs);
+    h+=`<div class="vhead"><div><h2>Search: “${esc(state.q.trim())}”</h2><p>${all.length} matching question${all.length===1?"":"s"} across all topics and papers</p></div><div class="vtools"><button class="btn" id="clr2">Clear search</button></div></div>`;
+    h+=`<div class="cards">${all.map((q,i)=>cardHTML(q,i+1)).join("")||'<p class="empty">Nothing matches. Try a shorter word, e.g. “RSA”, “CBC”, “Kerberos” or a paper code like “EX25”.</p>'}</div>`;
+    main.innerHTML=h;bindCards();const c2=document.getElementById("clr2");if(c2)c2.onclick=clearSearch;return;
+  }
   if(state.view==="home"){
     const all=DATA.qs,p=progress(all);
     h+=`<div class="vhead"><h2>CS4542 Cryptography question bank</h2><p>Every question from your tests, exams and exercises, with worked solutions.</p></div>
     <div class="stats"><span><b>${all.length}</b>questions</span><span><b>${all.filter(q=>q.k==="calc").length}</b>with calculations</span><span><b>${DATA.papers.length}</b>papers &amp; exercises</span><span><b>${p.p}%</b>marked done</span></div>
     <div class="home">${DATA.topics.map(t=>{const qs=all.filter(q=>q.t===t.id),pr=progress(qs);return `<button class="tile" data-topic="${t.id}"><b>${t.name}</b><span>${t.sub}</span><em>${qs.length} questions · ${pr.p}% done</em></button>`}).join("")}</div>`;
-    const s=state.q.trim();
-    if(s||state.calcOnly){const list=filtered(all);h+=`<h3>${list.length} matching questions</h3><div class="cards">${list.map((q,i)=>cardHTML(q,i+1)).join("")||'<p class="empty">Nothing matches. Try a shorter search.</p>'}</div>`;}
+    if(state.calcOnly){const list=filtered(all);h+=`<h3>${list.length} matching questions</h3><div class="cards">${list.map((q,i)=>cardHTML(q,i+1)).join("")||'<p class="empty">Nothing matches. Try a shorter search.</p>'}</div>`;}
     main.innerHTML=h;bindCards();return;
   }
   let list,title,sub;
@@ -358,17 +385,25 @@ function bindCards(){
           c.querySelector(".feedback").innerHTML=(ok?'<b class="g">Correct.</b> ':'<b class="r">Not quite.</b> ')+q.a;}});}
   });
 }
-function go(view,key){state.view=view;state.key=key||null;const h=view==="home"?"":view==="tools"?"tools":view+"-"+key;try{history.replaceState(null,"",h?"#"+h:location.pathname)}catch(e){}render();window.scrollTo(0,0);}
-function fromHash(){const h=location.hash.slice(1);if(h==="tools")return go("tools");const m=h.match(/^(topic|paper)-(.+)$/);if(m&&((m[1]==="topic"&&TOP[m[2]])||(m[1]==="paper"&&PAP[m[2]]))){state.navMode=m[1];setTabs();return go(m[1],m[2]);}go("home");}
+function go(view,key){if(state.q){state.q="";sIn.value="";document.getElementById("searchClear").hidden=true;}state.view=view;state.key=key||null;const h=view==="home"?"":(view==="tools"||view==="quiz")?view:view+"-"+key;try{history.replaceState(null,"",h?"#"+h:location.pathname)}catch(e){}render();window.scrollTo(0,0);}
+function fromHash(){const h=location.hash.slice(1);if(h==="tools")return go("tools");if(h==="quiz")return go("quiz");const m=h.match(/^(topic|paper)-(.+)$/);if(m&&((m[1]==="topic"&&TOP[m[2]])||(m[1]==="paper"&&PAP[m[2]]))){state.navMode=m[1];setTabs();return go(m[1],m[2]);}go("home");}
 function setTabs(){document.getElementById("tabTopic").classList.toggle("on",state.navMode==="topic");document.getElementById("tabPaper").classList.toggle("on",state.navMode==="paper");}
 document.getElementById("tabTopic").onclick=()=>{state.navMode="topic";setTabs();renderNav();};
 document.getElementById("tabPaper").onclick=()=>{state.navMode="paper";setTabs();renderNav();};
 document.getElementById("navlist").onclick=e=>{const b=e.target.closest(".ni");if(!b)return;if(b.dataset.home)go("home");else if(b.dataset.topic)go("topic",b.dataset.topic);else if(b.dataset.paper)go("paper",b.dataset.paper);};
-document.getElementById("search").oninput=e=>{state.q=e.target.value;if(state.view==="tools")state.view="home";render();};
+const sIn=document.getElementById("search");
+function runSearch(){state.q=sIn.value;document.getElementById("searchClear").hidden=!state.q.trim();if(state.view==="tools")state.view="home";render();window.scrollTo(0,0);}
+function clearSearch(){sIn.value="";runSearch();}
+sIn.oninput=runSearch;
+function jump(){if(innerWidth<=820&&state.q.trim())main.scrollIntoView({block:"start"});}
+sIn.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();runSearch();sIn.blur();jump();}};
+document.getElementById("searchGo").onclick=()=>{runSearch();jump();};
+document.getElementById("searchClear").onclick=clearSearch;
 function toggleBtn(id,key){const b=document.getElementById(id);b.onclick=()=>{state[key]=!state[key];b.classList.toggle("on",state[key]);b.setAttribute("aria-pressed",state[key]);render();};}
 toggleBtn("calcOnly","calcOnly");toggleBtn("hideDone","hideDone");
 document.getElementById("showAll").onclick=e=>{const sols=[...main.querySelectorAll(".sol")];const open=sols.some(s=>s.hidden);sols.forEach(s=>s.hidden=!open);main.querySelectorAll(".tog").forEach(t=>t.textContent=open?"Hide":"Show solution");e.target.textContent=open?"Close all solutions":"Open all solutions";};
 document.getElementById("goTools").onclick=()=>go("tools");
+document.getElementById("goQuiz").onclick=()=>{quiz=null;go("quiz");};
 window.addEventListener("hashchange",fromHash);
 
 /* ---------------- calculators (show workings) ---------------- */
@@ -406,6 +441,89 @@ function bindTools(){
     let r=0;for(let i=0;i<n;i++)if(b>>i&1)r^=a<<i;const raw=r;for(let i=2*n;i>=n;i--)if(r>>i&1)r^=md<<(i-n);
     const bin=v=>v.toString(2).padStart(n,"0");$("gout").innerHTML=`<p>${bin(a)} × ${bin(b)}: shifted-XOR product = ${raw.toString(2)}₂; reduce mod ${md.toString(2)}₂ ⇒ <b class="mono">${bin(r)} = ${r.toString(16).toUpperCase()}</b></p>`;};
   ["pgo","ego","cgo","aenc","pfgo","ggo"].forEach(id=>$(id).click());
+}
+/* ---------------- quiz mode ---------------- */
+let quiz=null;
+let qset={topics:new Set(DATA.topics.map(t=>t.id)),kinds:new Set(["mcq","calc","theory"]),kindsP:new Set(["test","exam","exercise"]),n:10,typed:true};
+try{const sv=JSON.parse(localStorage.getItem("cryptoBank.quizset")||"null");if(sv){qset.topics=new Set(sv.topics);qset.kinds=new Set(sv.kinds);qset.kindsP=new Set(sv.kindsP);qset.n=sv.n;qset.typed=sv.typed;}}catch(e){}
+function poolFor(){return DATA.qs.filter(q=>qset.topics.has(q.t)&&qset.kinds.has(q.k)&&q.papers.some(p=>qset.kindsP.has(PAP[p].kind)))}
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function renderQuiz(){
+  if(!quiz){
+    const pool=poolFor();
+    const tcount=t=>DATA.qs.filter(q=>q.t===t&&qset.kinds.has(q.k)).length;
+    main.innerHTML=`<div class="vhead"><div><h2>Quiz me</h2><p>Pick what you want to be assessed on. Multiple-choice is marked automatically; for written questions you compare with the model answer and mark yourself.</p></div></div>
+    <section class="qz"><h3>1. Topics</h3><div class="pick" id="qzT">${DATA.topics.map(t=>`<label><input type="checkbox" value="${t.id}" ${qset.topics.has(t.id)?"checked":""}>${t.name} <small>${tcount(t.id)}</small></label>`).join("")}</div>
+      <div class="actions"><button class="btn" id="qzAll">Select all</button><button class="btn" id="qzNone">Clear all</button></div></section>
+    <section class="qz"><h3>2. Question types</h3><div class="pick" id="qzK">${[["mcq","Multiple choice"],["calc","Calculations"],["theory","Explain / theory"]].map(([k,l])=>`<label><input type="checkbox" value="${k}" ${qset.kinds.has(k)?"checked":""}>${l}</label>`).join("")}</div></section>
+    <section class="qz"><h3>3. Taken from</h3><div class="pick" id="qzP">${[["test","Tests"],["exam","Exams & other papers"],["exercise","Exercises"]].map(([k,l])=>`<label><input type="checkbox" value="${k}" ${qset.kindsP.has(k)?"checked":""}>${l}</label>`).join("")}</div></section>
+    <section class="qz"><h3>4. How many questions?</h3><div class="pick" id="qzN">${[5,10,15,20,0].map(n=>`<label><input type="radio" name="qzn" value="${n}" ${qset.n===n?"checked":""}>${n||"All"}</label>`).join("")}</div>
+      <div class="pick" style="margin-top:10px"><label><input type="checkbox" id="qzTyped" ${qset.typed?"checked":""}>Give me a box to write my answer before I see the solution</label></div></section>
+    <div class="qtop"><span><b id="qzCount">${pool.length}</b> questions match your choices</span><button class="btn on" id="qzStart" ${pool.length?"":"disabled"}>Start quiz</button></div>`;
+    const sync=()=>{qset.topics=new Set([...document.querySelectorAll("#qzT input:checked")].map(i=>i.value));qset.kinds=new Set([...document.querySelectorAll("#qzK input:checked")].map(i=>i.value));
+      qset.kindsP=new Set([...document.querySelectorAll("#qzP input:checked")].map(i=>i.value));qset.n=+document.querySelector("#qzN input:checked").value;qset.typed=document.getElementById("qzTyped").checked;
+      try{localStorage.setItem("cryptoBank.quizset",JSON.stringify({topics:[...qset.topics],kinds:[...qset.kinds],kindsP:[...qset.kindsP],n:qset.n,typed:qset.typed}))}catch(e){}
+      const n=poolFor().length;document.getElementById("qzCount").textContent=n;document.getElementById("qzStart").disabled=!n;};
+    main.querySelectorAll(".qz input").forEach(i=>i.onchange=sync);
+    document.getElementById("qzAll").onclick=()=>{main.querySelectorAll("#qzT input").forEach(i=>i.checked=true);sync();renderQuiz();};
+    document.getElementById("qzNone").onclick=()=>{main.querySelectorAll("#qzT input").forEach(i=>i.checked=false);sync();renderQuiz();};
+    document.getElementById("qzStart").onclick=()=>startQuiz(poolFor());
+    return;
+  }
+  if(quiz.i>=quiz.qs.length){return quizResults();}
+  const q=quiz.qs[quiz.i],r=quiz.res[quiz.i]||{};
+  const tot=quiz.qs.length;
+  let h=`<div class="qtop"><span>Question <b>${quiz.i+1}</b> of <b>${tot}</b></span><span>Score so far: <b>${score().got}</b> / ${score().max}</span><span style="margin-left:auto"><button class="btn" id="qzQuit">End quiz</button></span></div>
+  <div class="qbar"><i style="width:${100*quiz.i/tot}%"></i></div>`;
+  const chips=q.src.map(s=>`<span class="chip" title="${esc(PAP[s.split(" ")[0]].name)}">${esc(s)}</span>`).join("");
+  h+=`<article class="card ${q.k}"><div class="meta">${chips}<span class="tag">${TOP[q.t].name}</span><span class="marks">${q.m?`[${q.m} mark${q.m>1?"s":""}]`:""}</span></div><div class="q">${q.q}</div>`;
+  if(q.k==="mcq"){
+    const corr=Array.isArray(q.c)?q.c:[q.c];
+    h+=`${corr.length>1?'<div class="note">Choose two.</div>':""}<div class="opts">${q.opts.map((o,i)=>`<button class="opt" data-i="${i}"><span class="L">${"ABCDE"[i]}</span><span>${o}</span></button>`).join("")}</div><div class="feedback" aria-live="polite"></div>`;
+  } else {
+    if(qset.typed)h+=`<label for="myans" class="note" style="display:block;margin-top:10px">Your answer (just for you — not saved):</label><textarea id="myans" class="myans" placeholder="Write or work it out here, then reveal the solution.">${r.text||""}</textarea>`;
+    h+=`<div class="actions"><button class="btn on" id="qzReveal">Reveal solution</button></div><div class="sol" id="qzSol" hidden>${q.a}${q.d&&DIAG[q.d]?DIAG[q.d]():""}
+      <div class="grade"><span class="note" style="align-self:center">How did you do?</span><button class="btn g" data-g="1">Got it right</button><button class="btn p" data-g="0.5">Partly right</button><button class="btn r" data-g="0">Got it wrong</button></div></div>`;
+  }
+  h+=`</article><div class="actions"><button class="btn" id="qzPrev" ${quiz.i?"":"disabled"}>← Previous</button><button class="btn on" id="qzNext" ${r.done?"":"hidden"}>${quiz.i+1<tot?"Next question →":"See my results"}</button></div>`;
+  main.innerHTML=h;
+  const next=document.getElementById("qzNext");
+  document.getElementById("qzQuit").onclick=()=>{quiz.i=quiz.qs.length;renderQuiz();};
+  document.getElementById("qzPrev").onclick=()=>{quiz.i--;renderQuiz();};
+  next.onclick=()=>{quiz.i++;renderQuiz();window.scrollTo(0,0);};
+  const w=q.m||1;
+  if(q.k==="mcq"){
+    const corr=Array.isArray(q.c)?q.c:[q.c];let picked=r.picked?r.picked.slice():[];
+    const show=()=>{main.querySelectorAll(".opt").forEach(o=>{const i=+o.dataset.i;if(picked.includes(i))o.classList.add(corr.includes(i)?"right":"wrong");if(picked.length>=corr.length&&corr.includes(i))o.classList.add("right")});
+      if(picked.length>=corr.length){const ok=picked.every(p=>corr.includes(p));main.querySelector(".feedback").innerHTML=(ok?'<b class="g">Correct.</b> ':'<b class="r">Not quite.</b> ')+q.a;}};
+    show();
+    main.querySelectorAll(".opt").forEach(o=>o.onclick=()=>{if(picked.length>=corr.length)return;const i=+o.dataset.i;if(picked.includes(i))return;picked.push(i);
+      if(picked.length===corr.length){const ok=picked.every(p=>corr.includes(p));quiz.res[quiz.i]={done:true,picked,g:ok?1:0,w};next.hidden=false;}show();});
+  } else {
+    const ta=document.getElementById("myans");if(ta)ta.oninput=()=>{quiz.res[quiz.i]=Object.assign(quiz.res[quiz.i]||{},{text:ta.value});};
+    const sol=document.getElementById("qzSol"),rv=document.getElementById("qzReveal");
+    if(r.revealed){sol.hidden=false;rv.hidden=true;}
+    rv.onclick=()=>{sol.hidden=false;rv.hidden=true;quiz.res[quiz.i]=Object.assign(quiz.res[quiz.i]||{},{revealed:true});};
+    main.querySelectorAll(".grade .btn").forEach(b=>{if(r.done&&+b.dataset.g===r.g)b.classList.add("on");b.onclick=()=>{quiz.res[quiz.i]=Object.assign(quiz.res[quiz.i]||{},{done:true,g:+b.dataset.g,w});
+      main.querySelectorAll(".grade .btn").forEach(x=>x.classList.toggle("on",x===b));next.hidden=false;next.focus();};});
+  }
+}
+function startQuiz(pool){let qs=shuffle(pool);if(qset.n)qs=qs.slice(0,qset.n);quiz={qs,i:0,res:[]};renderQuiz();window.scrollTo(0,0);}
+function score(){let got=0,max=0;quiz.res.forEach(r=>{if(r&&r.done){got+=r.g*r.w;max+=r.w;}});return {got:Math.round(got*10)/10,max}}
+function quizResults(){
+  const sc=score(),pct=sc.max?Math.round(100*sc.got/sc.max):0,answered=quiz.res.filter(r=>r&&r.done).length;
+  const byT={};quiz.qs.forEach((q,i)=>{const r=quiz.res[i];if(!r||!r.done)return;const t=byT[q.t]||(byT[q.t]={got:0,max:0});t.got+=r.g*r.w;t.max+=r.w;});
+  const missed=quiz.qs.filter((q,i)=>!quiz.res[i]||!quiz.res[i].done||quiz.res[i].g<1);
+  const verdict=pct>=75?"Exam-ready on these topics.":pct>=50?"Getting there — redo the ones you missed.":"Worth revising these topics again.";
+  main.innerHTML=`<div class="vhead"><div><h2>Quiz results</h2><p>${answered} of ${quiz.qs.length} questions answered</p></div></div>
+  <section class="qz"><div class="big">${pct}%</div><p><b>${sc.got}</b> out of <b>${sc.max}</b> marks. ${verdict}</p>
+  ${Object.keys(byT).length?tbl(["Topic","Marks","%"],Object.entries(byT).map(([t,v])=>[TOP[t].name,`${Math.round(v.got*10)/10} / ${v.max}`,`${v.max?Math.round(100*v.got/v.max):0}%`])):""}</section>
+  <h3>Question by question</h3><div class="rev">${quiz.qs.map((q,i)=>{const r=quiz.res[i];const st=!r||!r.done?["no","skipped"]:r.g===1?["ok","right"]:r.g>0?["half","partly"]:["no","wrong"];
+    return `<div><span class="st ${st[0]}">${st[1]}</span><span class="chip">${esc(q.src[0])}</span><span>${esc(plain(q.q).slice(0,90))}…</span></div>`}).join("")}</div>
+  <div class="actions"><button class="btn on" id="qzRetry" ${missed.length?"":"disabled"}>Retry the ${missed.length} I missed</button><button class="btn" id="qzAgain">New quiz, same settings</button><button class="btn" id="qzSetup">Change settings</button></div>`;
+  document.getElementById("qzRetry").onclick=()=>{quiz={qs:shuffle(missed),i:0,res:[]};renderQuiz();window.scrollTo(0,0);};
+  document.getElementById("qzAgain").onclick=()=>startQuiz(poolFor());
+  document.getElementById("qzSetup").onclick=()=>{quiz=null;renderQuiz();};
 }
 fromHash();
 </script>
